@@ -133,7 +133,7 @@ pub fn read(conn: &TcpStream) -> Option<Message> {
     //     // println!("stream read message error {:?}", err);
         return None;
     }
-    println!("stream read message success {:?}", message_buf);
+    // println!("stream read message success {:?}", message_buf.len());
 
     // let mut buffer: Vec<u8> = Vec::new();
     // reader

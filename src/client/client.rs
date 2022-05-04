@@ -15,7 +15,6 @@ fn complete_handshake<'a>(conn: &'a TcpStream, info_hash: &'a [u8; 20], peer_id:
     let mut stream = RefCell::new(conn);
     let req = handshake::Handshake::new(info_hash, peer_id);
     let ser = req.serialize();
-    // println!("handshake send data {:?}", ser);
     let res = stream.borrow_mut().write(&ser);
 
     if let Err(err) = res {
@@ -54,16 +53,16 @@ impl <'a>CustomClient<'a> {
         let addr = peer.general_address();
         let stream = TcpStream::connect_timeout(&addr, Duration::new(3, 0))?;
 
-        println!("开始握手");
+        // println!("开始握手");
         let handshake_res = complete_handshake(&stream, info_hash, &peer_id);
         if let None = handshake_res {
             return Err(Error::new(ErrorKind::Other, "握手失败"));
         }
-        println!("握手结束");
+        // println!("握手结束");
 
         let bf = recv_bitfield(&stream);
 
-        println!("bitfield 数据");
+        // println!("bitfield 数据");
 
         if let None = bf {
             return Err(Error::new(ErrorKind::Other, "oh no!"));

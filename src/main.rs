@@ -8,7 +8,7 @@ mod handshake;
 
 fn main() {
     let in_path = "src/torrent_file/testdata/debian-11.3.0-amd64-netinst.iso.torrent";
-    let out_path = "";
+    let out_path = "src/torrent_file/testdata/debian.iso";
 
     let res = torrent_file::torrent_file::open(&in_path);
 

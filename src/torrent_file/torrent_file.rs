@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::fs::File;
 use std::io::Read;
+use std::io::prelude::*;
 use std::path::Path;
 use std::collections::HashMap;
 use std::str;
@@ -54,12 +55,26 @@ impl CustomTorrent {
     }
 
 
-    pub fn down_load_to_file(&self, path: &str) {
+    pub fn down_load_to_file(&self, out_path: &str) {
         let mut peer_id = [0u8; 20];
         rand::thread_rng().fill_bytes(&mut peer_id);
         let peers = self.request_peers(&peer_id, 6881);
         let p2p_torrent = P2pTorrent::general_p2p_torrent(self, peers, peer_id);
-        p2p_torrent.download();
+        let buf = p2p_torrent.download();
+        println!("下载完成 buf_len {}", buf.len());
+
+        let path = Path::new(out_path);
+        let display = path.display();
+        let mut file = match File::create(&path) {
+            Err(why) => panic!("couldn't create {}: {}", display, why.description()),
+            Ok(file) => file,
+        };
+        match file.write_all(&buf) {
+            Err(why) => {
+                panic!("couldn't write to {}: {}", display, why.description())
+            },
+            Ok(_) => println!("successfully wrote to {}", display),
+        }
     }
 
     fn request_peers(&self, peer_id: &[u8], port: u16) -> Vec<Peer> {

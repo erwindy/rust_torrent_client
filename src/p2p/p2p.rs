@@ -53,7 +53,7 @@ impl <'a>PieceProgress<'a> {
             message::message::MessageId::MsgNotInterested => todo!(),
             message::message::MessageId::MsgHave => {
                 let index = message::message::parse_have(&msg);
-                println!("设置bit field");
+                // println!("设置bit field");
                 set_piece(& RefCell::new(&client.bit_field), index as usize);
             },
             message::message::MessageId::MsgBitfield => todo!(),
@@ -62,7 +62,7 @@ impl <'a>PieceProgress<'a> {
                 let n = message::message::parse_piece(self.index, &mut self.buf, &msg);
                 self.downloaded += n as usize;
                 self.backlog -= 1;
-                println!("接收到piece数据 {:?} {:?}", self.buf, msg);
+                // println!("接收到piece数据 {:?} {:?}", self.buf, msg);
             },
             message::message::MessageId::MsgCancel => todo!(),
         }
@@ -90,7 +90,7 @@ fn attempt_download_piece(c: &CustomClient, pw: &PieceWork) -> Vec<u8>{
                     block_size = pw.length - state.requested;
                 }
 
-                println!("下载piece 发送请求 {} {} {}", pw.index, state.requested, block_size);
+                // println!("下载piece 发送请求 {} {} {}", pw.index, state.requested, block_size);
 
                 c.SendRequest(pw.index, state.requested, block_size);
 
@@ -118,7 +118,7 @@ impl P2pTorrent {
         }
     }
 
-    fn start_download_worker(&self, peer: &Peer, work_queue: &Vec<PieceWork>, results: &mut Vec<PieceResult>) {
+    fn start_download_worker(&self, peer: &Peer, work_queue: &Vec<PieceWork>, results: &RefCell<&mut Vec<PieceResult>>) {
         let client = CustomClient::new(peer, self.peerId, &self.infoHash);
         if let Err(e) = client {
             // println!("init client error: {} {:?}", e, peer);
@@ -137,7 +137,7 @@ impl P2pTorrent {
             let buf = attempt_download_piece(&c, pw);
 
             c.SendHave(pw.index);
-            results.push(PieceResult {
+            results.borrow_mut().push(PieceResult {
                 index: pw.index,
                 buffer: buf,
             });
@@ -158,9 +158,10 @@ impl P2pTorrent {
         end - begin
     }
 
-    pub fn download(&self) {
+    pub fn download(&self) -> Vec<u8> {
         let mut work_queue = vec![];
         let mut results = vec![];
+        let results_ref = RefCell::new(&mut results);
         for index in 0..self.piece_hashes.len() {
             let length = self.calculate_piece_size(index);
             work_queue.push(PieceWork {
@@ -170,12 +171,25 @@ impl P2pTorrent {
             })
         }
 
-        println!("Downloading {:?}", &self.peers.len());
+        println!("Downloading peers {:?}", &self.peers.len());
 
         for peer in &self.peers {
-            self.start_download_worker(peer, &work_queue, &mut results)
+            self.start_download_worker(peer, &work_queue, &results_ref)
         }
 
-
+        let mut buf = vec![0u8; self.length];
+        let mut done_pieces = 0;
+        while done_pieces < self.piece_hashes.len() {
+            let res = results_ref.borrow_mut().pop();
+            if let None = res {
+                break;
+            }
+            let res = res.unwrap();
+            let (begin, end) = self.calculate_bounds_for_piece(res.index);
+            buf[begin..end].copy_from_slice(&res.buffer);
+            done_pieces += 1;
+            // let percent = ((done_pieces as f64) / (self.piece_hashes.len() as f64)) * 100.0;
+        }
+        return buf;
     }
 }
