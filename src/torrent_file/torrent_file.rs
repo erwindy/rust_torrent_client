@@ -1,24 +1,19 @@
-use std::error::Error;
 use std::fs::File;
-use std::io::Read;
 use std::io::prelude::*;
 use std::path::Path;
-use std::collections::HashMap;
 use std::str;
 
 use bendy::{
-    decoding::{Error as BendyError, FromBencode, Object, ResultExt},
-    encoding::{AsString, ToBencode, SingleItemEncoder},
+    decoding::{FromBencode},
 };
 
 use lava_torrent::torrent::v1::Torrent;
 use rand::RngCore;
-use sha1::{self, Digest};
 use url::Url;
 extern crate url;
-use url::form_urlencoded::{byte_serialize, parse};
+use url::form_urlencoded::{byte_serialize};
 
-use crate::{torrent_file::tracker::bencodeTrackerResp, peers::peers::Peer, p2p::p2p::P2pTorrent};
+use crate::{torrent_file::tracker::BencodeTrackerResp, peers::peers::Peer, p2p::p2p::P2pTorrent};
 
 #[derive(Debug)]
 pub struct CustomTorrent {
@@ -32,9 +27,9 @@ pub struct CustomTorrent {
 }
 
 impl CustomTorrent {
-    pub fn general_custom_torrent(torrent: Torrent) -> Self {
+    pub fn general_custom_torrent(torrent: Torrent) -> Result<Self, hex::FromHexError> {
         let mut info_hash = [0u8; 20];
-        hex::decode_to_slice(torrent.info_hash(), &mut info_hash);
+        hex::decode_to_slice(torrent.info_hash(), &mut info_hash)?;
 
         // let hash_len = 20;
         let piece_hashes = torrent.pieces.iter().map(|p| {
@@ -43,7 +38,7 @@ impl CustomTorrent {
             piece
         }).collect::<Vec<_>>();
 
-        CustomTorrent {
+        Ok(CustomTorrent {
             torrent: torrent.clone(),
             announce: torrent.announce.unwrap_or_else(|| "".to_string()),
             info_hash,
@@ -51,7 +46,7 @@ impl CustomTorrent {
             piece_length: torrent.piece_length as usize,
             length: torrent.length as usize,
             name: torrent.name,
-        }
+        })
     }
 
 
@@ -66,12 +61,12 @@ impl CustomTorrent {
         let path = Path::new(out_path);
         let display = path.display();
         let mut file = match File::create(&path) {
-            Err(why) => panic!("couldn't create {}: {}", display, why.description()),
+            Err(why) => panic!("couldn't create {}: {}", display, why.to_string()),
             Ok(file) => file,
         };
         match file.write_all(&buf) {
             Err(why) => {
-                panic!("couldn't write to {}: {}", display, why.description())
+                panic!("couldn't write to {}: {}", display, why.to_string());
             },
             Ok(_) => println!("successfully wrote to {}", display),
         }
@@ -80,7 +75,7 @@ impl CustomTorrent {
     fn request_peers(&self, peer_id: &[u8], port: u16) -> Vec<Peer> {
         let url = self.build_tracker_url(peer_id, port);
         let resp = reqwest::blocking::get(url.as_str()).unwrap();
-        let tracker = bencodeTrackerResp::from_bencode(&resp.bytes().unwrap()).unwrap();
+        let tracker = BencodeTrackerResp::from_bencode(&resp.bytes().unwrap()).unwrap();
         tracker.peers
     }
 
@@ -110,12 +105,13 @@ impl CustomTorrent {
 
 }
 
-pub fn open(path: &str) {
-    let torrent = Torrent::read_from_file(path).unwrap();
+pub fn open(path: &str) -> Result<CustomTorrent, lava_torrent::LavaTorrentError> {
+    let torrent = Torrent::read_from_file(path)?;
 
-    let custom_torrent = CustomTorrent::general_custom_torrent(torrent);
-
-    custom_torrent.down_load_to_file(path);
-
+    let torrent = CustomTorrent::general_custom_torrent(torrent);
+    if let Err(_) = torrent {
+        return Err(lava_torrent::LavaTorrentError::from(std::io::Error::new(std::io::ErrorKind::Other, "")));
+    }
+    Ok(torrent.unwrap())
 }
 

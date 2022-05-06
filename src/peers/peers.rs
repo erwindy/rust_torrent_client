@@ -12,7 +12,7 @@ impl Peer {
     }
 }
 
-pub fn Unmarshal(peers_bin: &[u8]) -> Vec<Peer> {
+pub fn un_marshal(peers_bin: &[u8]) -> Vec<Peer> {
     let peer_size = 6;
     let num_peers = peers_bin.len() / peer_size;
     let mut peers = vec![];

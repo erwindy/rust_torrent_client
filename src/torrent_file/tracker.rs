@@ -1,16 +1,16 @@
 use bendy::{
-    decoding::{Error as BendyError, FromBencode, Object, ResultExt},
+    decoding::{Error as BendyError, FromBencode, Object},
 };
 
-use crate::peers::peers::{Unmarshal, Peer};
+use crate::peers::peers::{un_marshal, Peer};
 
 #[derive(Debug)]
-pub struct bencodeTrackerResp {
+pub struct BencodeTrackerResp {
     pub interval: u64,
     pub peers: Vec<Peer>,
 }
 
-impl FromBencode for bencodeTrackerResp {
+impl FromBencode for BencodeTrackerResp {
     fn decode_bencode_object(object: Object) -> Result<Self, BendyError>
     where
         Self: Sized,
@@ -23,19 +23,22 @@ impl FromBencode for bencodeTrackerResp {
         while let Some(pair) = dict_dec.next_pair()? {
             match pair {
                 (b"interval", value) => {
-                    fn default_v(s: bendy::decoding::Error) -> u64 { 0 }
+                    fn default_v(_: bendy::decoding::Error) -> u64 { 0 }
                     interval = u64::decode_bencode_object(value).unwrap_or_else(default_v);
                 },
                 (b"peers", value) => {
                     // fn default_v(s: bendy::decoding::Error) -> String { "".to_string() }
                     // peers = String::decode_bencode_object(value).unwrap_or_else(default_v);
-                    peers = Unmarshal(value.bytes_or(Err("")).unwrap());
+                    let byte = value.bytes_or(Err(""));
+                    if let Ok(bytes) = byte {
+                        peers = un_marshal(bytes);
+                    }
                 },
-                (unknown_field, _) => {},
+                (_, _) => {},
             }
         }
 
-        Ok(bencodeTrackerResp {
+        Ok(BencodeTrackerResp {
             interval,
             peers,
         })

@@ -1,9 +1,9 @@
-use std::{borrow::{Borrow, BorrowMut}, cell::RefCell};
+use std::{cell::RefCell, io};
 
-use crate::{peers::peers::Peer, torrent_file::torrent_file::CustomTorrent, client::client::CustomClient, bitfield::bitfield::{Bitfield, has_piece, set_piece}, message};
+use crate::{peers::peers::Peer, torrent_file::torrent_file::CustomTorrent, client::client::CustomClient, bitfield::bitfield::{has_piece, set_piece}, message};
 
-const Maxbacklog: usize = 5;
-const MaxBlockSize: usize = 16384;
+const MAX_BACK_LOG: usize = 5;
+const MAX_BLOCK_SIZE: usize = 16384;
 
 #[derive(Debug)]
 pub struct P2pTorrent {
@@ -40,8 +40,8 @@ struct PieceProgress<'a> {
 
 impl <'a>PieceProgress<'a> {
     pub fn read_message(&mut self) {
-        let mut client = self.client.borrow_mut();
-        let msg = client.Read();
+        let client = self.client.borrow_mut();
+        let msg = client.read();
         if let None = msg {
             return;
         }
@@ -69,7 +69,7 @@ impl <'a>PieceProgress<'a> {
     }
 }
 
-fn attempt_download_piece(c: &CustomClient, pw: &PieceWork) -> Vec<u8>{
+fn attempt_download_piece(c: &CustomClient, pw: &PieceWork) -> Result<Vec<u8>, io::Error> {
     let mut state = PieceProgress {
 		index:  pw.index,
 		client: RefCell::new(c),
@@ -83,8 +83,8 @@ fn attempt_download_piece(c: &CustomClient, pw: &PieceWork) -> Vec<u8>{
 
     if state.downloaded < pw.length {
         if !*c.choked.borrow() {
-            if state.backlog < Maxbacklog && state.requested < pw.length {
-                let mut block_size = MaxBlockSize;
+            if state.backlog < MAX_BACK_LOG && state.requested < pw.length {
+                let mut block_size = MAX_BLOCK_SIZE;
 
                 if pw.length - state.requested < block_size {
                     block_size = pw.length - state.requested;
@@ -92,7 +92,7 @@ fn attempt_download_piece(c: &CustomClient, pw: &PieceWork) -> Vec<u8>{
 
                 // println!("下载piece 发送请求 {} {} {}", pw.index, state.requested, block_size);
 
-                c.SendRequest(pw.index, state.requested, block_size);
+                c.send_request(pw.index, state.requested, block_size)?;
 
                 state.backlog += 1;
                 state.requested += block_size;
@@ -102,7 +102,7 @@ fn attempt_download_piece(c: &CustomClient, pw: &PieceWork) -> Vec<u8>{
         state.read_message();
     }
 
-    return state.buf;
+    return Ok(state.buf);
 }
 
 impl P2pTorrent {
@@ -120,14 +120,14 @@ impl P2pTorrent {
 
     fn start_download_worker(&self, peer: &Peer, work_queue: &Vec<PieceWork>, results: &RefCell<&mut Vec<PieceResult>>) {
         let client = CustomClient::new(peer, self.peerId, &self.infoHash);
-        if let Err(e) = client {
+        if let Err(_) = client {
             // println!("init client error: {} {:?}", e, peer);
             return;
         }
         // println!("init client success");
-        let mut c = client.unwrap();
-        c.SendUnchoke();
-        c.SendInterested();
+        let c = client.unwrap();
+        c.send_unchoke().err();
+        c.send_interested().err();
 
         for pw in work_queue.iter() {
             if !has_piece(&c.bit_field, pw.index) {
@@ -135,8 +135,12 @@ impl P2pTorrent {
             }
 
             let buf = attempt_download_piece(&c, pw);
+            if let Err(_) = buf {
+                return;
+            }
+            let buf = buf.unwrap();
 
-            c.SendHave(pw.index);
+            c.send_have(pw.index).err();
             results.borrow_mut().push(PieceResult {
                 index: pw.index,
                 buffer: buf,

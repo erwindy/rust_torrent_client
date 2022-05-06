@@ -1,4 +1,4 @@
-use std::{net::TcpStream, cell::RefCell, io::Read, vec};
+use std::{net::TcpStream, cell::RefCell, io::{Read, Error, ErrorKind}, vec};
 
 #[derive(Debug, Clone)]
 pub struct Handshake<'a> {
@@ -32,16 +32,16 @@ impl <'a>Handshake<'a> {
     }
 }
 
-pub fn read(conn: &TcpStream) -> Option<[u8; 20]> {
+pub fn read(conn: &TcpStream) -> Result<[u8; 20], Error> {
     let stream = RefCell::new(conn);
     let mut length_buf = [0u8; 1];
-    stream.borrow_mut().read_exact(&mut length_buf);
+    stream.borrow_mut().read_exact(&mut length_buf)?;
     let pstr_len = length_buf[0] as usize;
     if pstr_len == 0 {
-        return None;
+        return Err(Error::new(ErrorKind::Other, "stream长度为0"));
     }
     let mut handshake_buf = vec![0; 48 + pstr_len];
-    stream.borrow_mut().read_exact(&mut handshake_buf);
+    stream.borrow_mut().read_exact(&mut handshake_buf)?;
 
     let mut info_hash = [0u8; 20];
     let mut peer_id = [0u8; 20];
@@ -57,5 +57,5 @@ pub fn read(conn: &TcpStream) -> Option<[u8; 20]> {
     //     peer_id: &[0u8; 20],
     // }
 
-    Some(info_hash)
+    Ok(info_hash)
 }

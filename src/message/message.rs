@@ -1,4 +1,4 @@
-use std::{io::{Read, BufReader, BufRead}, net::TcpStream, cell::RefCell};
+use std::{io::{Read, BufReader}, net::TcpStream};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum MessageId {
@@ -22,7 +22,7 @@ pub enum MessageId {
 	MsgCancel = 8,
 }
 
-fn uint2messageId(num: u8) -> MessageId {
+fn uint2message_id(num: u8) -> MessageId {
     match num {
         0 => MessageId::MsgChoke,
         1 => MessageId::MsgUnchoke,
@@ -104,45 +104,28 @@ pub fn parse_have(msg: &Message) -> u32 {
 }
 
 pub fn read(conn: &TcpStream) -> Option<Message> {
-    // let stream = RefCell::new(conn);
-
     let mut reader = BufReader::new(conn);
 
-    // let mut all_data = vec![];
-    // stream.borrow_mut().read_to_end(&mut all_data);
-    // println!("all data {:?}", all_data);
-
-    // if buffer.len() < 4> {
-    //     return None;
-    // }
     let mut length_buf = [0u8; 4];
-    // length_buf.copy_from_slice(&buffer[0..4]);
-    // stream.borrow_mut().read_exact(&mut length_buf);
-    reader.read_exact(&mut length_buf);
+    let err = reader.read_exact(&mut length_buf);
+    if let Err(_) = err {
+        return None;
+    }
 
-    let length = u32::from_be_bytes(length_buf); //((length_buf[0] as u32) << 24) + ((length_buf[1] as u32) << 16) + ((length_buf[2] as u32) << 8) + (length_buf[3] as u32);
+    let length = u32::from_be_bytes(length_buf);
     println!("buffer length {:?} {}", length_buf, length);
     if length == 0 {
         return None;
     }
 
     let mut message_buf = vec![0u8; length as usize];
-    let buf_res = reader.read_exact(&mut message_buf); // stream.borrow_mut().read_exact(&mut message_buf);
-    // message_buf.copy_from_slice(&buffer[4..4+(length as usize)]);
-    if let Err(err) = buf_res {
+    let buf_res = reader.read_exact(&mut message_buf);
+    if let Err(_) = buf_res {
     //     // println!("stream read message error {:?}", err);
         return None;
     }
-    // println!("stream read message success {:?}", message_buf.len());
-
-    // let mut buffer: Vec<u8> = Vec::new();
-    // reader
-    //     .read_until(b'\n', &mut buffer)
-    //     .expect("Could not read into buffer");
-    // println!("all buffer {:?} {}", buffer, reader.buffer().is_empty());
-
     Some(Message {
-        id: uint2messageId(message_buf[0]),
+        id: uint2message_id(message_buf[0]),
         payload: message_buf[1..].to_vec(),
     })
 }
@@ -160,7 +143,6 @@ impl Message {
         let mut buf = vec![0u8; 4 + length];
         let len_buf: [u8; 4] = (length as u32).to_be_bytes();
         buf[0..4].copy_from_slice(&len_buf);
-        // println!("serial buf {:?}", buf);
         let id = self.id as u8;
         buf[4] = id;
         buf[5..].copy_from_slice(&self.payload[..]);
